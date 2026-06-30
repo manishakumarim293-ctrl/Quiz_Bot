@@ -630,3 +630,131 @@ async def send_next_group_poll(chat_id, context):
                 "correct_idx": correct_idx,
                 "timestamp": datetime.now()
     }
+
+ async def compile_group_leaderboard(chat_id, context):
+    game = GROUP_GAMES.get(chat_id)
+    if not game: return
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT question_text, options, correct_answer FROM questions WHERE quiz_id = ?", (game["quiz_id"],))
+    questions = cursor.fetchall()
+    conn.close()
+    
+    correct_answers = {}
+    for idx, (q_text, options_json, correct_ans) in enumerate(questions):
+        options = json.loads(options_json)
+        correct_answers[idx] = options.index(correct_ans)
+    
+    final_scores = {}
+    for uid in game["joined_users"].keys():
+        final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0}
+
+    for uid, user_answers in game["user_answers"].items():
+        score = 0
+        wrong = 0
+        total_time = 0.0
+        
+        for question_idx, answer_data in user_answers.items():
+            selected_idx = answer_data["selected"]  
+            correct_idx = correct_answers.get(question_idx, -1)
+            
+            if selected_idx == correct_idx:
+                score += 1
+                start_time = game["question_start_times"].get(question_idx, answer_data["timestamp"])
+                if isinstance(start_time, datetime):
+                    elapsed = (answer_data["timestamp"] - start_time).total_seconds()
+                    total_time += elapsed
+            else:
+                wrong += 1
+        
+        final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time}
+    
+    sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["score"], item[1]["total_time"]))[:20]
+    board = "🏆 FINAL QUIZ LEADERBOARD (Top 20) 🏆\n\n"
+    
+    for idx, (uid, meta) in enumerate(sorted_scores, 1):
+        user_obj = game["joined_users"].get(uid, "User")
+        correct = meta["score"]
+        wrong = meta["wrong"]
+        total_time = format_time(meta["total_time"])  
+        
+        if idx == 1: medal = "🥇"
+        elif idx == 2: medal = "🥈"
+        elif idx == 3: medal = "🥉"
+        else: medal = f"{idx}."
+            
+        board += f"{medal} {user_obj}\n   ✅ {correct} Sahi | ❌ {wrong} Ghalat | ⏱ {total_time}\n\n"
+        
+    share_text = f"Maine Laado Quiz Bot me participate kiya! 🔥"
+    kb = [[InlineKeyboardButton("📢 Share Score", url=f"https://t.me{share_text}")]]
+    
+    await context.bot.send_message(chat_id=chat_id, text=board, reply_markup=InlineKeyboardMarkup(kb))
+    GROUP_GAMES.pop(chat_id, None)
+
+async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    await update.message.reply_text("❌ Setup cancelled.", reply_markup=ReplyKeyboardRemove())
+    return ConversationHandler.END
+
+async def generic_callback_alert(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer("This feature is under development!", show_alert=True)
+
+def main():
+    if not BOT_TOKEN: return
+    app = Application.builder().token(BOT_TOKEN).build()
+    
+    # 🔁 COMPREHENSIVE DUAL CONVERSATION ROUTER MAPS (Creation + Live Editing)
+    new_quiz_handler = ConversationHandler(
+        entry_points=[
+            CommandHandler("newquiz", new_quiz_start),
+            CallbackQueryHandler(new_quiz_start, pattern="^btn_newquiz$")
+        ],
+        states={
+            TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_title)],
+            DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_desc), CommandHandler("skip", receive_desc)],
+            QUESTIONS: [CommandHandler("undo", handle_undo), CommandHandler("done", finish_quiz_creation), MessageHandler(filters.POLL, receive_poll)],
+            TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)],
+    )
+
+    quiz_edit_flow_handler = ConversationHandler(
+        entry_points=[
+            CallbackQueryHandler(edit_title_trigger, pattern="^edtitle_"),
+            CallbackQueryHandler(edit_desc_trigger, pattern="^eddesc_"),
+            CallbackQueryHandler(edit_timer_trigger, pattern="^edtime_")
+        ],
+        states={
+            EDIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_title)],
+            EDIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_desc)],
+            EDIT_TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_timer)]
+        },
+        fallbacks=[CommandHandler("cancel", cancel)]
+    )
+    
+    # Registering core structures hooks
+    app.add_handler(CommandHandler("start", start))
+    app.add_handler(CommandHandler("help", help_command))
+    
+    app.add_handler(new_quiz_handler)
+    app.add_handler(quiz_edit_flow_handler)
+
+    # Core system triggers binding maps
+    app.add_handler(CallbackQueryHandler(view_my_quizzes, pattern="^btn_viewquizzes$"))
+    app.add_handler(CallbackQueryHandler(handle_back_main, pattern="^back_main$"))
+    app.add_handler(CallbackQueryHandler(handle_view_quiz_callback, pattern="^viewq_"))
+    
+    app.add_handler(CallbackQueryHandler(handle_ready_click, pattern="^ready_"))
+    app.add_handler(CallbackQueryHandler(edit_quiz_menu, pattern="^edit_"))
+    app.add_handler(CallbackQueryHandler(back_to_summary, pattern="^backto_"))
+    app.add_handler(CallbackQueryHandler(generic_callback_alert, pattern="^(runsolo_|status_)"))
+    
+    app.add_handler(PollAnswerHandler(track_poll_answers))
+    
+    print("🚀 Advanced Telegram Quiz-Bot UI Active...")
+    app.run_polling()
+
+if __name__ == "__main__":
+    main()
+        
