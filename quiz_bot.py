@@ -72,7 +72,8 @@ def init_db():
     conn.close()
 
 init_db()
-    async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+
+async def new_quiz_start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     # Check if interaction is via callback button or command
     msg_obj = update.callback_query.message if update.callback_query else update.message
     user_id = update.callback_query.from_user.id if update.callback_query else update.message.from_user.id
@@ -209,7 +210,8 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=ReplyKeyboardRemove()
     )
     return TIMER
-      async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+
+async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     text = update.message.text.strip()
     time_map = {"15": 15, "30": 30, "40": 40, "60": 60}
     
@@ -242,7 +244,8 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
     await update.message.reply_text("✅ Timer set! Creating your quiz summary...")
     await show_summary_panel_text(update, context, qid)
     return ConversationHandler.END
-    async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
     """Fetches and displays all quizzes created by the user"""
     query = update.callback_query
     user_id = query.from_user.id
@@ -312,7 +315,7 @@ async def show_summary_panel(query, context, quiz_id):
         conn.close()
 
         time_display = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
-        bot_username = context.bot.username
+        bot_username = f"@{context.bot.username}" if context.bot.username else "bot"
         escaped_title = escape_markdown(title)
         
         summary_text = (
@@ -326,7 +329,7 @@ async def show_summary_panel(query, context, quiz_id):
         inline_keyboard = [
             [InlineKeyboardButton("🏁 Start this quiz", callback_data=f"runsolo_{quiz_id}")],
             [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me{bot_username}?startgroup=quiz_{quiz_id}")],
-            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.meshare/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
+            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.me/share/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
             [InlineKeyboardButton("⚙️ Edit quiz", callback_data=f"edit_{quiz_id}"), InlineKeyboardButton("📊 Quiz status", callback_data=f"status_{quiz_id}")]
         ]
         reply_markup = InlineKeyboardMarkup(inline_keyboard)
@@ -353,7 +356,7 @@ async def show_summary_panel_text(update, context, quiz_id):
         conn.close()
 
         time_display = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
-        bot_username = context.bot.username
+        bot_username = f"@{context.bot.username}" if context.bot.username else "bot"
         escaped_title = escape_markdown(title)
         
         summary_text = (
@@ -368,7 +371,7 @@ async def show_summary_panel_text(update, context, quiz_id):
         inline_keyboard = [
             [InlineKeyboardButton("🏁 Start this quiz", callback_data=f"runsolo_{quiz_id}")],
             [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me{bot_username}?startgroup=quiz_{quiz_id}")],
-            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.meshare/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
+            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.me/share/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
             [InlineKeyboardButton("⚙️ Edit quiz", callback_data=f"edit_{quiz_id}"), InlineKeyboardButton("📊 Quiz status", callback_data=f"status_{quiz_id}")]
         ]
         reply_markup = InlineKeyboardMarkup(inline_keyboard)
@@ -399,7 +402,8 @@ async def back_to_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
     quiz_id = int(query.data.split("_")[1])
     await query.message.delete()
     await show_summary_panel(query, context, quiz_id)
-    # ==========================================
+
+# ==========================================
 # ⚙️ FULLY OPERATIONAL QUIZ EDITOR HANDLERS
 # ==========================================
 
@@ -606,7 +610,8 @@ async def send_next_group_poll(chat_id, context):
     await asyncio.sleep(timer)
     game["current_q"] += 1
     asyncio.create_task(send_next_group_poll(chat_id, context))
-    async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+
+async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
     ans = update.poll_answer
     pid = ans.poll_id
     uid = ans.user.id
@@ -629,14 +634,18 @@ async def send_next_group_poll(chat_id, context):
                 "selected": selected_idx,  
                 "correct_idx": correct_idx,
                 "timestamp": datetime.now()
-    }
+            }
 
- async def compile_group_leaderboard(chat_id, context):
+async def compile_group_leaderboard(chat_id, context):
     game = GROUP_GAMES.get(chat_id)
     if not game: return
     
     conn = sqlite3.connect(DB_FILE)
     cursor = conn.cursor()
+    cursor.execute("SELECT title FROM quizzes WHERE quiz_id = ?", (game["quiz_id"],))
+    quiz_title_data = cursor.fetchone()
+    quiz_title = quiz_title_data[0] if quiz_title_data else "Quiz"
+    
     cursor.execute("SELECT question_text, options, correct_answer FROM questions WHERE quiz_id = ?", (game["quiz_id"],))
     questions = cursor.fetchall()
     conn.close()
@@ -671,25 +680,46 @@ async def send_next_group_poll(chat_id, context):
         final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time}
     
     sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["score"], item[1]["total_time"]))[:20]
-    board = "🏆 FINAL QUIZ LEADERBOARD (Top 20) 🏆\n\n"
     
+    # ============ NEW RESULT DESIGN ============
+    header = f"🏁 The quiz '{escape_markdown(quiz_title)}' has finished!\n\n"
+    
+    # Count total questions answered
+    total_questions_answered = len(questions)
+    subheader = f"📋 {total_questions_answered} questions answered\n\n"
+    
+    # Build leaderboard with new design
+    leaderboard = ""
     for idx, (uid, meta) in enumerate(sorted_scores, 1):
-        user_obj = game["joined_users"].get(uid, "User")
-        correct = meta["score"]
-        wrong = meta["wrong"]
-        total_time = format_time(meta["total_time"])  
+        user_name = game["joined_users"].get(uid, "User")
+        score = meta["score"]
+        total_time = format_time(meta["total_time"])
         
-        if idx == 1: medal = "🥇"
-        elif idx == 2: medal = "🥈"
-        elif idx == 3: medal = "🥉"
-        else: medal = f"{idx}."
-            
-        board += f"{medal} {user_obj}\n   ✅ {correct} Sahi | ❌ {wrong} Ghalat | ⏱ {total_time}\n\n"
+        # Determine rank/medal
+        if idx == 1:
+            rank_icon = "🥇"
+        elif idx == 2:
+            rank_icon = "🥈"
+        elif idx == 3:
+            rank_icon = "🥉"
+        else:
+            rank_icon = f"{idx}."
         
+        # Format entry with new design
+        leaderboard += f"{rank_icon} 👤 {user_name}\n"
+        leaderboard += f"   📊 Total Score: {score}/{total_questions_answered}\n"
+        leaderboard += f"   ⏱️ Total Time Taken: ({total_time})\n\n"
+    
+    # Add congratulations footer
+    footer = "🏆 Congratulations to the winners!"
+    
+    # Combine all parts
+    full_message = header + subheader + leaderboard + footer
+    
     share_text = f"Maine Laado Quiz Bot me participate kiya! 🔥"
     kb = [[InlineKeyboardButton("📢 Share Score", url=f"https://t.me{share_text}")]]
     
-    await context.bot.send_message(chat_id=chat_id, text=board, reply_markup=InlineKeyboardMarkup(kb))
+    await context.bot.send_message(chat_id=chat_id, text=full_message, reply_markup=InlineKeyboardMarkup(kb))
     GROUP_GAMES.pop(chat_id, None)
 
 async def cancel(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
@@ -757,4 +787,3 @@ def main():
 
 if __name__ == "__main__":
     main()
-        
