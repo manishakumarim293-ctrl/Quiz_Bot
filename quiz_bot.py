@@ -411,3 +411,222 @@ async def edit_title_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE)
     await query.message.reply_text("📝 Please send the **new title** for your quiz:")
     return EDIT_TITLE
 
+async def save_edited_title(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    new_title = update.message.text.strip()
+    quiz_id = context.user_data.get("editing_quiz_id")
+    
+    if not quiz_id:
+        await update.message.reply_text("❌ Error: Session expired. Restart using menu.")
+        return ConversationHandler.END
+        
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE quizzes SET title = ? WHERE quiz_id = ?", (new_title, quiz_id))
+    conn.commit()
+    conn.close()
+    
+    context.user_data.pop("editing_quiz_id", None)
+    await update.message.reply_text("✅ Quiz title successfully updated!")
+    await show_summary_panel_text(update, context, quiz_id)
+    return ConversationHandler.END
+
+async def edit_desc_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    quiz_id = int(query.data.split("_")[1])
+    context.user_data["editing_quiz_id"] = quiz_id
+    await query.message.reply_text("ℹ️ Please send the **new description** for your quiz (or type /skip to remove it):")
+    return EDIT_DESC
+
+async def save_edited_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    new_desc = "" if text.lower() == "/skip" else text
+    quiz_id = context.user_data.get("editing_quiz_id")
+    
+    if not quiz_id:
+        await update.message.reply_text("❌ Error: Session expired.")
+        return ConversationHandler.END
+        
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE quizzes SET description = ? WHERE quiz_id = ?", (new_desc, quiz_id))
+    conn.commit()
+    conn.close()
+    
+    context.user_data.pop("editing_quiz_id", None)
+    await update.message.reply_text("✅ Quiz description successfully updated!")
+    await show_summary_panel_text(update, context, quiz_id)
+    return ConversationHandler.END
+
+async def edit_timer_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    quiz_id = int(query.data.split("_")[1])
+    context.user_data["editing_quiz_id"] = quiz_id
+    await query.message.reply_text("⏱ Please enter the new per-question timer limit: (15, 30, 40, or 60)")
+    return EDIT_TIMER
+
+async def save_edited_timer(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    time_map = {"15": 15, "30": 30, "40": 40, "60": 60}
+    
+    if text not in time_map:
+        await update.message.reply_text("❌ Invalid entry! Please type exactly 15, 30, 40, or 60:")
+        return EDIT_TIMER
+        
+    quiz_id = context.user_data.get("editing_quiz_id")
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("UPDATE quizzes SET timer = ? WHERE quiz_id = ?", (time_map[text], quiz_id))
+    conn.commit()
+    conn.close()
+    
+    context.user_data.pop("editing_quiz_id", None)
+    await update.message.reply_text("✅ Quiz timer configuration updated!")
+    await show_summary_panel_text(update, context, quiz_id)
+    return ConversationHandler.END
+
+
+# ==========================================
+# 🎯 SINGLE READY BUTTON DRIVEN ACTIVATION
+# ==========================================
+
+async def handle_ready_click(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Auto-joins users and sets dynamic counter to verify activation benchmarks"""
+    query = update.callback_query
+    chat_id = query.message.chat_id
+    user_id = query.from_user.id
+    user_name = query.from_user.username if query.from_user.username else query.from_user.first_name
+    quiz_id = query.data.split("_")[1]
+    
+    if chat_id not in GROUP_GAMES:
+        GROUP_GAMES[chat_id] = {
+            "quiz_id": quiz_id, 
+            "joined_users": {}, 
+            "current_q": 0, 
+            "scores": {}, 
+            "poll_map": {}, 
+            "start_time": None,
+            "user_answers": {},  
+            "question_start_times": {},
+            "ready_users": set(),  
+            "quiz_started": False  
+        }
+        
+    game = GROUP_GAMES[chat_id]
+
+    if game["quiz_started"]:
+        await query.answer("🚀 Quiz countdown pehle hi shuru ho chuka hai!")
+        return
+
+    # Auto-Join structure initialization execution
+    if user_id not in game["joined_users"]:
+        game["joined_users"][user_id] = f"@{user_name}" if query.from_user.username else user_name
+        game["scores"][user_id] = {"score": 0, "total_time": 0.0}
+        game["user_answers"][user_id] = {}
+
+    game["ready_users"].add(user_id)
+    ready_count = len(game["ready_users"])
+    joined_count = len(game["joined_users"])
+    names_list = ", ".join(game["joined_users"].values())
+
+    if ready_count >= 2:
+        game["quiz_started"] = True
+        await query.answer("🎯 Target achieved! Quiz start ho rahi hai...")
+        await query.edit_message_text("⚡ All requirements met! Initializing countdown...")
+        
+        # 5-second dynamic countdown deletion cycles
+        for count in ["5️⃣", "4️⃣", "3️⃣", "2️⃣", "1️⃣"]:
+            countdown_msg = await context.bot.send_message(chat_id=chat_id, text=count)
+            await asyncio.sleep(1)
+            await context.bot.delete_message(chat_id=chat_id, message_id=countdown_msg.message_id)
+
+        # 5 seconds banner hold execution
+        banner_msg = await context.bot.send_message(chat_id=chat_id, text="🔥 Get ready! Quiz shuru ho rahi hai... 🚀")
+        await asyncio.sleep(5)
+        await context.bot.delete_message(chat_id=chat_id, message_id=banner_msg.message_id)
+        
+        game["current_q"] = 0
+        asyncio.create_task(send_next_group_poll(chat_id, context))
+    else:
+        # Dynamic inline text monitoring refresh updates
+        keyboard = [[InlineKeyboardButton(f"I am ready! 🎯 ({ready_count}/2)", callback_data=f"ready_{quiz_id}")]]
+        await query.edit_message_text(
+            text=f"🏁 **Quiz Setup Active**\n\nJoined Users ({joined_count}): {names_list}\n\n*Waiting for 2 users to be ready. ({ready_count}/2 completed)*",
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+        await query.answer("Aapne confirmation register kar di! 👍")
+
+async def send_next_group_poll(chat_id, context):
+    game = GROUP_GAMES.get(chat_id)
+    if not game: return
+        
+    qid = game["quiz_id"]
+    
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT timer FROM quizzes WHERE quiz_id = ?", (qid,))
+    timer_data = cursor.fetchone()
+    cursor.execute("SELECT question_text, options, correct_answer, pre_message, explanation FROM questions WHERE quiz_id = ?", (qid,))
+    questions = cursor.fetchall()
+    conn.close()
+    
+    if game["current_q"] >= len(questions):
+        await compile_group_leaderboard(chat_id, context)
+        return
+
+    # Tuple extraction verification execution
+    timer = timer_data[0] if (timer_data and isinstance(timer_data, tuple)) else 30
+    q = questions[game["current_q"]]
+    q_text, options_json, correct_ans, pre_msg, explanation = q
+    options = json.loads(options_json)
+    correct_idx = options.index(correct_ans)
+    
+    if pre_msg:
+        await context.bot.send_message(chat_id=chat_id, text=f"📢 Context: {pre_msg}")
+        await asyncio.sleep(1)
+
+    game["question_start_times"][game["current_q"]] = datetime.now()
+    game["start_time"] = datetime.now()
+    
+    poll_msg = await context.bot.send_poll(
+        chat_id=chat_id, question=f"❓ Q ({game['current_q'] + 1}/{len(questions)}): {q_text}",
+        options=options, type="quiz", correct_option_id=correct_idx,
+        explanation=explanation if explanation else None, is_anonymous=False
+    )
+    
+    game["poll_map"][poll_msg.poll.id] = {
+        "correct_idx": correct_idx, 
+        "chat_id": chat_id,
+        "correct_answer": correct_ans,
+        "question_index": game["current_q"]
+    }
+    
+    await asyncio.sleep(timer)
+    game["current_q"] += 1
+    asyncio.create_task(send_next_group_poll(chat_id, context))
+    async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    ans = update.poll_answer
+    pid = ans.poll_id
+    uid = ans.user.id
+    
+    for cid, game in list(GROUP_GAMES.items()):
+        if pid in game["poll_map"]:
+            poll_info = game["poll_map"][pid]
+            correct_idx = poll_info["correct_idx"]
+            question_idx = poll_info["question_index"]
+            
+            if uid not in game["user_answers"]:
+                if uid in game["joined_users"]:
+                    game["user_answers"][uid] = {}
+                else:
+                    continue
+            
+            # Numeric single index list matching evaluation mapping conversion
+            selected_idx = ans.option_ids[0] if ans.option_ids else -1
+            game["user_answers"][uid][question_idx] = {
+                "selected": selected_idx,  
+                "correct_idx": correct_idx,
+                "timestamp": datetime.now()
+    }
