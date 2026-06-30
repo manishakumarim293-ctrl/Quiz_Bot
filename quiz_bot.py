@@ -209,4 +209,205 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
         reply_markup=ReplyKeyboardRemove()
     )
     return TIMER
-      
+      async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    text = update.message.text.strip()
+    time_map = {"15": 15, "30": 30, "40": 40, "60": 60}
+    
+    if text not in time_map:
+        await update.message.reply_text("❌ Invalid time. Please enter: 15, 30, 40, or 60")
+        return TIMER
+    
+    t_sec = time_map[text]
+    quiz = context.user_data.get("quiz_build", {})
+    
+    if not quiz or not quiz.get("title"):
+        await update.message.reply_text("❌ Error: Quiz data missing. Please start over with /newquiz")
+        return ConversationHandler.END
+
+    user_id = context.user_data.get("quiz_build_creator_id", update.message.from_user.id)
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("INSERT INTO quizzes (creator_id, title, description, timer) VALUES (?, ?, ?, ?)", (user_id, quiz["title"], quiz["description"], t_sec))
+    qid = cursor.lastrowid
+    for q in quiz["questions"]:
+        cursor.execute("INSERT INTO questions (quiz_id, question_text, options, correct_answer, explanation, pre_message) VALUES (?, ?, ?, ?, ?, ?)", 
+                       (qid, q["text"], json.dumps(q["options"]), q["correct"], q["explanation"], q["pre_message"]))
+    conn.commit()
+    conn.close()
+    
+    context.user_data.pop("quiz_build", None)
+    context.user_data.pop("quiz_build_creator_id", None)
+    
+    await update.message.reply_text("✅ Timer set! Creating your quiz summary...")
+    await show_summary_panel_text(update, context, qid)
+    return ConversationHandler.END
+    async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Fetches and displays all quizzes created by the user"""
+    query = update.callback_query
+    user_id = query.from_user.id
+    await query.answer()
+
+    conn = sqlite3.connect(DB_FILE)
+    cursor = conn.cursor()
+    cursor.execute("SELECT quiz_id, title FROM quizzes WHERE creator_id = ? ORDER BY quiz_id DESC", (user_id,))
+    rows = cursor.fetchall()
+    conn.close()
+
+    if not rows:
+        keyboard = [[InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")]]
+        await query.edit_message_text(
+            text="❌ Aapne abhi tak koi quiz nahi banaya hai!",
+            reply_markup=InlineKeyboardMarkup(keyboard)
+        )
+        return
+
+    text = "📚 **Aapke Banaye Huye Quizzes:**\n\nNiche kisi bhi quiz par click karke uska summary panel open karein:\n"
+    keyboard = []
+    for qid, title in rows:
+        keyboard.append([InlineKeyboardButton(f"📝 {title}", callback_data=f"viewq_{qid}")])
+    
+    keyboard.append([InlineKeyboardButton("Back to Main Menu 🔙", callback_data="back_main")])
+    await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def handle_view_quiz_callback(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handles opening summary panel from the quiz list"""
+    query = update.callback_query
+    await query.answer()
+    quiz_id = int(query.data.split("_")[1])
+    await query.message.delete()
+    await show_summary_panel(query, context, quiz_id)
+
+async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Returns to the original main greeting menu"""
+    query = update.callback_query
+    await query.answer()
+    welcome_text = (
+        "👋 **Welcome to Laado Quiz Bot!**\n\n"
+        "Niche diye gaye buttons se aap apna naya quiz bana sakte hain ya pehle banaye huye quizzes dekh sakte hain:\n\n"
+        "🚀 /newquiz - Naya Quiz banana shuru karein\n"
+        "❌ /cancel - Active creation flow cancel karein"
+    )
+    keyboard = [
+        [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
+        [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
+    ]
+    await query.edit_message_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+
+async def show_summary_panel(query, context, quiz_id):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT title, timer FROM quizzes WHERE quiz_id = ?", (quiz_id,))
+        quiz_data = cursor.fetchone()
+        
+        if not quiz_data:
+            await query.message.reply_text("❌ Error: Quiz data could not be retrieved.")
+            conn.close()
+            return
+        
+        title, timer = quiz_data
+        cursor.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,))
+        total_q = cursor.fetchone()
+        conn.close()
+
+        time_display = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
+        bot_username = context.bot.username
+        escaped_title = escape_markdown(title)
+        
+        summary_text = (
+            "👍 Here's your quiz:\n\n"
+            f"📚 {escaped_title}\n"
+            f"🙋‍♂️ {total_q[0]} question(s) · ⏱ Time: {time_display}\n\n"
+            f"🔗 External sharing link:\n"
+            f"https://t.me{bot_username}?start=quiz_{quiz_id}"
+        )
+        
+        inline_keyboard = [
+            [InlineKeyboardButton("🏁 Start this quiz", callback_data=f"runsolo_{quiz_id}")],
+            [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me{bot_username}?startgroup=quiz_{quiz_id}")],
+            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.meshare/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
+            [InlineKeyboardButton("⚙️ Edit quiz", callback_data=f"edit_{quiz_id}"), InlineKeyboardButton("📊 Quiz status", callback_data=f"status_{quiz_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(inline_keyboard)
+        await query.message.reply_text(summary_text, reply_markup=reply_markup)
+    except Exception as e:
+        logging.error(f"Error in show_summary_panel: {e}")
+        await query.message.reply_text(f"❌ Error: {str(e)}")
+
+async def show_summary_panel_text(update, context, quiz_id):
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT title, timer FROM quizzes WHERE quiz_id = ?", (quiz_id,))
+        quiz_data = cursor.fetchone()
+        
+        if not quiz_data:
+            await update.message.reply_text("❌ Error: Quiz data could not be retrieved.")
+            conn.close()
+            return
+        
+        title, timer = quiz_data
+        cursor.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ?", (quiz_id,))
+        total_q = cursor.fetchone()
+        conn.close()
+
+        time_display = f"{timer} sec" if timer < 60 else f"{timer // 60} min"
+        bot_username = context.bot.username
+        escaped_title = escape_markdown(title)
+        
+        summary_text = (
+            "👍 Quiz created.\n\n"
+            "🏁 Here's your quiz:\n"
+            f"📚 {escaped_title}\n"
+            f"🙋‍♂️ {total_q[0]} question(s) · ⏱ Time: {time_display}\n\n"
+            f"🔗 External sharing link:\n"
+            f"https://t.me{bot_username}?start=quiz_{quiz_id}"
+        )
+        
+        inline_keyboard = [
+            [InlineKeyboardButton("🏁 Start this quiz", callback_data=f"runsolo_{quiz_id}")],
+            [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me{bot_username}?startgroup=quiz_{quiz_id}")],
+            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.meshare/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
+            [InlineKeyboardButton("⚙️ Edit quiz", callback_data=f"edit_{quiz_id}"), InlineKeyboardButton("📊 Quiz status", callback_data=f"status_{quiz_id}")]
+        ]
+        reply_markup = InlineKeyboardMarkup(inline_keyboard)
+        await update.message.reply_text(summary_text, reply_markup=reply_markup)
+    except Exception as e:
+        logging.error(f"Error in show_summary_panel_text: {e}")
+        await update.message.reply_text(f"❌ Error: {str(e)}")
+
+async def edit_quiz_menu(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    quiz_id = int(query.data.split("_")[1])
+    
+    keyboard = [
+        [InlineKeyboardButton("📝 Edit title", callback_data=f"edtitle_{quiz_id}")],
+        [InlineKeyboardButton("ℹ️ Edit description", callback_data=f"eddesc_{quiz_id}")],
+        [InlineKeyboardButton("⏱ Edit timer settings", callback_data=f"edtime_{quiz_id}")],
+        [InlineKeyboardButton("Back 🔙", callback_data=f"backto_{quiz_id}")]
+    ]
+    await query.edit_message_text(
+        text="⚙️ **Edit Quiz Menu**\n\nAap is quiz ka kya badalna chahte hain? Niche se chunyein:",
+        reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown"
+    )
+
+async def back_to_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    query = update.callback_query
+    await query.answer()
+    quiz_id = int(query.data.split("_")[1])
+    await query.message.delete()
+    await show_summary_panel(query, context, quiz_id)
+    # ==========================================
+# ⚙️ FULLY OPERATIONAL QUIZ EDITOR HANDLERS
+# ==========================================
+
+async def edit_title_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    query = update.callback_query
+    await query.answer()
+    quiz_id = int(query.data.split("_")[1])
+    context.user_data["editing_quiz_id"] = quiz_id
+    await query.message.reply_text("📝 Please send the **new title** for your quiz:")
+    return EDIT_TITLE
+
