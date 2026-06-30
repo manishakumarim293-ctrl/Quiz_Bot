@@ -690,9 +690,11 @@ async def send_next_group_poll(chat_id, context):
     asyncio.create_task(send_next_group_poll(chat_id, context))
 
 async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Track poll answers from ALL users who participate, even if they didn't click Ready"""
     ans = update.poll_answer
     pid = ans.poll_id
     uid = ans.user.id
+    user_name = ans.user.first_name or "Player"
     
     for cid, game in list(GROUP_GAMES.items()):
         if pid in game["poll_map"]:
@@ -700,11 +702,15 @@ async def track_poll_answers(update: Update, context: ContextTypes.DEFAULT_TYPE)
             correct_idx = poll_info["correct_idx"]
             question_idx = poll_info["question_index"]
             
+            # 🔴 FIX: Auto-add user to joined_users if they participate
+            if uid not in game["joined_users"]:
+                game["joined_users"][uid] = user_name
+                game["scores"][uid] = {"score": 0, "total_time": 0.0}
+                game["user_answers"][uid] = {}
+                logging.info(f"New participant added: {user_name} (ID: {uid})")
+            
             if uid not in game["user_answers"]:
-                if uid in game["joined_users"]:
-                    game["user_answers"][uid] = {}
-                else:
-                    continue
+                game["user_answers"][uid] = {}
             
             # Numeric single index list matching evaluation mapping conversion
             selected_idx = ans.option_ids[0] if ans.option_ids else -1
@@ -734,7 +740,8 @@ async def compile_group_leaderboard(chat_id, context):
         correct_answers[idx] = options.index(correct_ans)
     
     final_scores = {}
-    for uid in game["joined_users"].keys():
+    # Include ALL users who attempted the quiz
+    for uid in game["user_answers"].keys():
         final_scores[uid] = {"score": 0, "wrong": 0, "total_time": 0.0}
 
     for uid, user_answers in game["user_answers"].items():
@@ -757,19 +764,20 @@ async def compile_group_leaderboard(chat_id, context):
         
         final_scores[uid] = {"score": score, "wrong": wrong, "total_time": total_time}
     
-    sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["score"], item[1]["total_time"]))[:20]
+    sorted_scores = sorted(final_scores.items(), key=lambda item: (-item[1]["score"], item[1]["total_time"]))[:50]
     
     # ============ NEW RESULT DESIGN ============
     header = f"🏁 The quiz '{escape_markdown(quiz_title)}' has finished!\n\n"
     
     # Count total questions answered
     total_questions_answered = len(questions)
-    subheader = f"📋 {total_questions_answered} questions answered\n\n"
+    subheader = f"📋 {total_questions_answered} questions answered\n"
+    subheader += f"👥 Total Participants: {len(final_scores)}\n\n"
     
     # Build leaderboard with new design
     leaderboard = ""
     for idx, (uid, meta) in enumerate(sorted_scores, 1):
-        user_name = game["joined_users"].get(uid, "User")
+        user_name = game["joined_users"].get(uid, "Unknown User")
         score = meta["score"]
         total_time = format_time(meta["total_time"])
         
@@ -786,10 +794,10 @@ async def compile_group_leaderboard(chat_id, context):
         # Format entry with new design
         leaderboard += f"{rank_icon} 👤 {user_name}\n"
         leaderboard += f"   📊 Total Score: {score}/{total_questions_answered}\n"
-        leaderboard += f"   ⏱️ Total Time Taken: ({total_time})\n\n"
+        leaderboard += f"   ⏱️ Total Time: ({total_time})\n\n"
     
     # Add congratulations footer
-    footer = "🏆 Congratulations to the winners!"
+    footer = "🏆 Congratulations to all participants!"
     
     # Combine all parts
     full_message = header + subheader + leaderboard + footer
