@@ -128,8 +128,8 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
     welcome_text = (
         "👋 **Welcome to Laado Quiz Bot!**\n\n"
         "Niche diye gaye buttons se aap apna naya quiz bana sakte hain ya pehle banaye huye quizzes dekh sakte hain:\n\n"
-        "🚀 /newquiz - Naya Quiz banana shuru karein\n"
-        "❌ /cancel - Active creation flow cancel karein"
+        "🚀 /newquiz - New Quiz Create Kare\n"
+        "🖥️ /help - Help Menu"
     )
     keyboard = [
         [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
@@ -139,7 +139,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
 async def help_command(update: Update, context: ContextTypes.DEFAULT_TYPE):
     help_text = (
-        "📖 **Laado Quiz Bot Help Menu**\n\n"
+        "📖 **Help Menu**\n\n"
         "Aap is bot se quizzes bana kar apne dosto ke sath groups me realtime khel sakte hain.\n\n"
         "💡 **Available Actions:**"
     )
@@ -289,7 +289,7 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "👋 **Welcome to Laado Quiz Bot!**\n\n"
         "Niche diye gaye buttons se aap apna naya quiz bana sakte hain ya pehle banaye huye quizzes dekh sakte hain:\n\n"
         "🚀 /newquiz - Naya Quiz banana shuru karein\n"
-        "❌ /cancel - Active creation flow cancel karein"
+        "🖥️ /help - Help Menu"
     )
     keyboard = [
         [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
@@ -792,7 +792,7 @@ async def compile_group_leaderboard(chat_id, context):
             rank_icon = f"{idx}."
         
         # Format entry with new design
-        leaderboard += f"{rank_icon} 👤 {user_name}\n"
+        leaderboard += f"{rank_icon} 💗 {user_name}\n"
         leaderboard += f"   📊 Total Score: {score}/{total_questions_answered}\n"
         leaderboard += f"   ⏱️ Total Time: ({total_time})\n\n"
     
