@@ -323,13 +323,13 @@ async def show_summary_panel(query, context, quiz_id):
             f"📚 {escaped_title}\n"
             f"🙋‍♂️ {total_q[0]} question(s) · ⏱ Time: {time_display}\n\n"
             f"🔗 External sharing link:\n"
-            f"https://t.me{bot_username}?start=quiz_{quiz_id}"
+            f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
         )
         
         inline_keyboard = [
             [InlineKeyboardButton("🏁 Start this quiz", callback_data=f"runsolo_{quiz_id}")],
-            [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me{bot_username}?startgroup=quiz_{quiz_id}")],
-            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.me/share/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
+            [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me/{bot_username}?startgroup=quiz_{quiz_id}")],
+            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}")],
             [InlineKeyboardButton("⚙️ Edit quiz", callback_data=f"edit_{quiz_id}"), InlineKeyboardButton("📊 Quiz status", callback_data=f"status_{quiz_id}")]
         ]
         reply_markup = InlineKeyboardMarkup(inline_keyboard)
@@ -365,13 +365,13 @@ async def show_summary_panel_text(update, context, quiz_id):
             f"📚 {escaped_title}\n"
             f"🙋‍♂️ {total_q[0]} question(s) · ⏱ Time: {time_display}\n\n"
             f"🔗 External sharing link:\n"
-            f"https://t.me{bot_username}?start=quiz_{quiz_id}"
+            f"https://t.me/{bot_username}?start=quiz_{quiz_id}"
         )
         
         inline_keyboard = [
             [InlineKeyboardButton("🏁 Start this quiz", callback_data=f"runsolo_{quiz_id}")],
-            [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me{bot_username}?startgroup=quiz_{quiz_id}")],
-            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.me/share/url?url=https://t.me{bot_username}?start=quiz_{quiz_id}")],
+            [InlineKeyboardButton("👥 Start quiz in group", url=f"https://t.me/{bot_username}?startgroup=quiz_{quiz_id}")],
+            [InlineKeyboardButton("📢 Share quiz", url=f"https://t.me/share/url?url=https://t.me/{bot_username}?start=quiz_{quiz_id}")],
             [InlineKeyboardButton("⚙️ Edit quiz", callback_data=f"edit_{quiz_id}"), InlineKeyboardButton("📊 Quiz status", callback_data=f"status_{quiz_id}")]
         ]
         reply_markup = InlineKeyboardMarkup(inline_keyboard)
@@ -716,8 +716,7 @@ async def compile_group_leaderboard(chat_id, context):
     # Combine all parts
     full_message = header + subheader + leaderboard + footer
     
-    share_text = f"Maine Laado Quiz Bot me participate kiya! 🔥"
-    kb = [[InlineKeyboardButton("📢 Share Score", url=f"https://t.me{share_text}")]]
+    kb = [[InlineKeyboardButton("📢 Share Score", url="https://t.me/share/url?url=Laado%20Quiz%20Bot%20Challenge!")]]
     
     await context.bot.send_message(chat_id=chat_id, text=full_message, reply_markup=InlineKeyboardMarkup(kb))
     GROUP_GAMES.pop(chat_id, None)
