@@ -211,8 +211,12 @@ async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         
         await update.message.reply_text(
             f"✅ Question added! Your quiz now has {len(context.user_data['quiz_build']['questions'])} question(s).\n\n"
-            "💬 **Optional:** Send a message/media (text, image, video, etc.) that will be shown BEFORE this question to provide context. "
-            "You can type /skip to ignore this and move to the next question."
+            "💬 **Optional:** Send a message/media (text, image, video, etc.) that will be shown BEFORE this question to provide context.\n\n"
+            "⚡ **Quick options:**\n"
+            "• 📎 Send media/details to add context\n"
+            "• 📄 Send text message for pre-message\n"
+            "• ➕ Send next poll directly (auto-skips pre-message)\n"
+            "• ✅ Type /done to finish quiz"
         )
         return PRE_MESSAGE
     except Exception as e:
@@ -227,6 +231,40 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         if current_idx < 0 or current_idx >= len(context.user_data.get("quiz_build", {}).get("questions", [])):
             await update.message.reply_text("❌ Error: Question not found!")
             return QUESTIONS
+        
+        # Check if a new poll is being sent - auto-skip pre-message
+        if update.message.poll:
+            # Auto-skip pre-message and process the new poll
+            context.user_data["quiz_build"]["questions"][current_idx]["pre_message"] = ""
+            context.user_data.pop("current_question_index", None)
+            
+            # Process the new poll
+            poll = update.message.poll
+            if poll.type != "quiz":
+                await update.message.reply_text("❌ Kripya Quiz mode wala poll hi send karein:")
+                return PRE_MESSAGE
+            if len(poll.options) > 7:
+                await update.message.reply_text("❌ Maximum 7 options allowed. Re-send poll:")
+                return PRE_MESSAGE
+
+            opts = [o.text for o in poll.options]
+            q_data = {
+                "text": poll.question, "options": opts, "correct": opts[poll.correct_option_id],
+                "explanation": poll.explanation if poll.explanation else "", "pre_message": ""
+            }
+            context.user_data["quiz_build"]["questions"].append(q_data)
+            context.user_data["current_question_index"] = len(context.user_data["quiz_build"]["questions"]) - 1
+            
+            await update.message.reply_text(
+                f"✅ Question added! Your quiz now has {len(context.user_data['quiz_build']['questions'])} question(s).\n\n"
+                "💬 **Optional:** Send a message/media (text, image, video, etc.) that will be shown BEFORE this question to provide context.\n\n"
+                "⚡ **Quick options:**\n"
+                "• 📎 Send media/details to add context\n"
+                "• 📄 Send text message for pre-message\n"
+                "• ➕ Send next poll directly (auto-skips pre-message)\n"
+                "• ✅ Type /done to finish quiz"
+            )
+            return PRE_MESSAGE
         
         # Handle /skip command
         if update.message.text and update.message.text.lower() == "/skip":
@@ -244,7 +282,9 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         await update.message.reply_text(
             f"✅ Pre-message set! Your quiz now has {len(context.user_data['quiz_build']['questions'])} question(s).\n\n"
-            "Send next question or /done to finish."
+            "💬 **Next step:**\n"
+            "• Send next question poll\n"
+            "• Or type /done to finish quiz"
         )
         return QUESTIONS
     except Exception as e:
@@ -1360,7 +1400,7 @@ def main():
                 TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_title)],
                 DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_desc), CommandHandler("skip", receive_desc)],
                 QUESTIONS: [CommandHandler("undo", handle_undo), CommandHandler("done", finish_quiz_creation), MessageHandler(filters.POLL, receive_poll)],
-                PRE_MESSAGE: [MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION, receive_pre_message), CommandHandler("skip", receive_pre_message)],
+                PRE_MESSAGE: [MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION | filters.POLL, receive_pre_message), CommandHandler("skip", receive_pre_message), CommandHandler("done", finish_quiz_creation)],
                 TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text)]
             },
             fallbacks=[CommandHandler("cancel", cancel)],
