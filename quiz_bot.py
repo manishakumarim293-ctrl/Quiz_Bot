@@ -362,7 +362,7 @@ async def handle_timer_text(update: Update, context: ContextTypes.DEFAULT_TYPE) 
         return TIMER
 
 async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Fetches and displays all quizzes created by the user with View buttons"""
+    """Fetches and displays all quizzes created by the user with View buttons - 2 per row"""
     try:
         query = update.callback_query
         user_id = query.from_user.id
@@ -390,7 +390,7 @@ async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             )
             return
 
-        # Build list with View buttons for each quiz
+        # Build list with View buttons for each quiz - 2 buttons per row
         text = "📚 **Aapke Banaye Huye Quizzes:**\n\n"
         
         keyboard = []
@@ -398,10 +398,12 @@ async def view_my_quizzes(update: Update, context: ContextTypes.DEFAULT_TYPE):
             time_display = f"{timer}s" if timer < 60 else f"{timer // 60}m"
             text += f"{idx}. **{escape_markdown(title)}**\n"
             text += f"   ☞ {q_count} question{'s' if q_count != 1 else ''} | {time_display}/Q\n\n"
-            # Add View button for each quiz
-            keyboard.append([InlineKeyboardButton(f"📖 View", callback_data=f"viewq_{qid}")])
+            # Add View button for each quiz - 2 per row
+            if len(keyboard) == 0 or len(keyboard[-1]) == 2:
+                keyboard.append([])
+            keyboard[-1].append(InlineKeyboardButton(f"📖 Q{idx}", callback_data=f"viewq_{qid}"))
         
-        # Back button
+        # Back button on its own row
         keyboard.append([InlineKeyboardButton("Back to Main Menu 🔙", callback_data="back_main")])
         await query.edit_message_text(text=text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
@@ -636,7 +638,7 @@ async def back_to_summary(update: Update, context: ContextTypes.DEFAULT_TYPE):
 # ==========================================
 
 async def edit_question_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE):
-    """Show list of questions to edit"""
+    """Show list of questions to edit - 2 buttons per row"""
     try:
         query = update.callback_query
         await query.answer()
@@ -662,7 +664,10 @@ async def edit_question_trigger(update: Update, context: ContextTypes.DEFAULT_TY
             # Truncate long question text for display
             display_text = q_text[:30] + "..." if len(q_text) > 30 else q_text
             text += f"{idx}. {escape_markdown(display_text)}\n"
-            keyboard.append([InlineKeyboardButton(f"Edit Q{idx}", callback_data=f"editq_{quiz_id}_{q_id}")])
+            # Add button - 2 per row
+            if len(keyboard) == 0 or len(keyboard[-1]) == 2:
+                keyboard.append([])
+            keyboard[-1].append(InlineKeyboardButton(f"Q{idx}", callback_data=f"editq_{quiz_id}_{q_id}"))
         
         keyboard.append([InlineKeyboardButton("🔙 Back", callback_data=f"edit_{quiz_id}")])
         
@@ -676,7 +681,7 @@ async def edit_question_trigger(update: Update, context: ContextTypes.DEFAULT_TY
         await query.answer("❌ Error", show_alert=True)
 
 async def show_question_detail_panel(query, context, quiz_id, question_id):
-    """Display complete question preview with all action buttons"""
+    """Display complete question preview with all action buttons - 1 per row"""
     try:
         conn = sqlite3.connect(DB_FILE)
         cursor = conn.cursor()
@@ -720,12 +725,12 @@ async def show_question_detail_panel(query, context, quiz_id, question_id):
         else:
             detail_text += f"\n📖 **Explanation:** None set\n"
         
-        # Build action buttons
+        # Build action buttons - 1 per row (ek ke niche ek)
         keyboard = [
             [InlineKeyboardButton("✏️ Pre-message", callback_data=f"editpre_{quiz_id}_{q_id}")],
+            [InlineKeyboardButton("🖥️ Explanation", callback_data=f"editexpl_{quiz_id}_{q_id}")],
             [InlineKeyboardButton("🗑️ Delete Question", callback_data=f"delq_{quiz_id}_{q_id}")],
             [InlineKeyboardButton("🔄 Replace Question", callback_data=f"replaceq_{quiz_id}_{q_id}")],
-            [InlineKeyboardButton("🖥️ Explanation", callback_data=f"editexpl_{quiz_id}_{q_id}")],
             [InlineKeyboardButton("🔙 Back to Questions List", callback_data=f"edquestion_{quiz_id}")]
         ]
         
