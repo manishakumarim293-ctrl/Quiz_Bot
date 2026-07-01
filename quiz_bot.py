@@ -26,6 +26,7 @@ GROUP_GAMES = {}
 # Conversation flow states
 TITLE, DESCRIPTION, QUESTIONS, PRE_MESSAGE, TIMER = range(5)
 EDIT_TITLE, EDIT_DESC, EDIT_TIMER = range(5, 8)
+EDIT_QUESTION_TEXT, EDIT_QUESTION_OPTIONS, EDIT_QUESTION_CORRECT, EDIT_QUESTION_EXPLANATION, EDIT_QUESTION_PRE_MESSAGE = range(8, 13)
 
 def escape_markdown(text):
     """Escape special characters for Telegram Markdown"""
@@ -634,6 +635,258 @@ async def edit_question_trigger(update: Update, context: ContextTypes.DEFAULT_TY
         logging.error(f"Error in edit_question_trigger: {e}")
         await query.answer("❌ Error", show_alert=True)
 
+async def show_question_detail_panel(query, context, quiz_id, question_id):
+    """Display complete question preview with all action buttons"""
+    try:
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("SELECT id, question_text, options, correct_answer, explanation, pre_message FROM questions WHERE id = ? AND quiz_id = ?", (question_id, quiz_id))
+        q_data = cursor.fetchone()
+        
+        # Get question number
+        cursor.execute("SELECT COUNT(*) FROM questions WHERE quiz_id = ? AND id < ?", (quiz_id, question_id))
+        q_number = cursor.fetchone()[0] + 1
+        
+        conn.close()
+        
+        if not q_data:
+            await query.answer("❌ Question not found!", show_alert=True)
+            return
+        
+        q_id, q_text, options_json, correct_ans, explanation, pre_message = q_data
+        options = json.loads(options_json)
+        
+        # Build detailed preview message
+        detail_text = f"❓ **Question #{q_number}** (Current Status: Active)\n\n"
+        detail_text += f"**Question Text:** {escape_markdown(q_text)}\n\n"
+        
+        detail_text += "👉 **Options:**\n"
+        for idx, opt in enumerate(options, 1):
+            status = "✅" if opt == correct_ans else "❌"
+            detail_text += f"• {status} {escape_markdown(opt)}"
+            if opt == correct_ans:
+                detail_text += " (Correct Answer)"
+            detail_text += "\n"
+        
+        detail_text += f"\n⏱️ **Timer:** 30 seconds\n"
+        
+        if pre_message:
+            detail_text += f"\nℹ️ **Pre-message:** {escape_markdown(pre_message)}\n"
+        else:
+            detail_text += f"\nℹ️ **Pre-message:** None set\n"
+        
+        if explanation:
+            detail_text += f"\n📖 **Explanation:** {escape_markdown(explanation)}\n"
+        else:
+            detail_text += f"\n📖 **Explanation:** None set\n"
+        
+        # Build action buttons
+        keyboard = [
+            [InlineKeyboardButton("✏️ Pre-message", callback_data=f"editpre_{quiz_id}_{q_id}")],
+            [InlineKeyboardButton("🗑️ Delete Question", callback_data=f"delq_{quiz_id}_{q_id}")],
+            [InlineKeyboardButton("🔄 Replace Question", callback_data=f"replaceq_{quiz_id}_{q_id}")],
+            [InlineKeyboardButton("🖥️ Explanation", callback_data=f"editexpl_{quiz_id}_{q_id}")],
+            [InlineKeyboardButton("🔙 Back to Questions List", callback_data=f"edquestion_{quiz_id}")]
+        ]
+        
+        await query.edit_message_text(
+            text=detail_text,
+            reply_markup=InlineKeyboardMarkup(keyboard),
+            parse_mode="Markdown"
+        )
+    except Exception as e:
+        logging.error(f"Error in show_question_detail_panel: {e}")
+        await query.answer("❌ Error loading question details", show_alert=True)
+
+async def handle_question_detail(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Handle click on specific question to show detail panel"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse: editq_quiz_id_question_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        question_id = int(parts[2])
+        
+        await show_question_detail_panel(query, context, quiz_id, question_id)
+    except Exception as e:
+        logging.error(f"Error in handle_question_detail: {e}")
+        await query.answer("❌ Error", show_alert=True)
+
+async def edit_pre_message_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start conversation to edit pre-message"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse: editpre_quiz_id_question_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        question_id = int(parts[2])
+        
+        context.user_data["editing_q_id"] = question_id
+        context.user_data["editing_quiz_id"] = quiz_id
+        
+        await query.message.reply_text(
+            "💬 **Send the pre-message content** (text, caption, etc.) that will appear before this question.\n\n"
+            "Or type /remove to delete the existing pre-message, /skip to cancel."
+        )
+        return EDIT_QUESTION_PRE_MESSAGE
+    except Exception as e:
+        logging.error(f"Error in edit_pre_message_trigger: {e}")
+        return ConversationHandler.END
+
+async def save_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Save edited pre-message"""
+    try:
+        q_id = context.user_data.get("editing_q_id")
+        quiz_id = context.user_data.get("editing_quiz_id")
+        text = update.message.text.strip()
+        
+        if not q_id or not quiz_id:
+            await update.message.reply_text("❌ Error: Session expired.")
+            return ConversationHandler.END
+        
+        # Handle /remove or /skip commands
+        if text.lower() == "/remove":
+            new_pre_msg = ""
+        elif text.lower() == "/skip":
+            context.user_data.pop("editing_q_id", None)
+            context.user_data.pop("editing_quiz_id", None)
+            await update.message.reply_text("❌ Cancelled.")
+            return ConversationHandler.END
+        else:
+            new_pre_msg = text
+        
+        # Update database
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE questions SET pre_message = ? WHERE id = ?", (new_pre_msg, q_id))
+        conn.commit()
+        conn.close()
+        
+        context.user_data.pop("editing_q_id", None)
+        context.user_data.pop("editing_quiz_id", None)
+        
+        await update.message.reply_text("✅ Pre-message updated successfully!")
+        return ConversationHandler.END
+    except Exception as e:
+        logging.error(f"Error in save_pre_message: {e}")
+        await update.message.reply_text("❌ Error saving pre-message.")
+        return ConversationHandler.END
+
+async def edit_explanation_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Start conversation to edit explanation"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse: editexpl_quiz_id_question_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        question_id = int(parts[2])
+        
+        context.user_data["editing_q_id"] = question_id
+        context.user_data["editing_quiz_id"] = quiz_id
+        
+        await query.message.reply_text(
+            "📖 **Send the explanation** for the correct answer.\n\n"
+            "Or type /remove to delete the existing explanation, /skip to cancel."
+        )
+        return EDIT_QUESTION_EXPLANATION
+    except Exception as e:
+        logging.error(f"Error in edit_explanation_trigger: {e}")
+        return ConversationHandler.END
+
+async def save_explanation(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
+    """Save edited explanation"""
+    try:
+        q_id = context.user_data.get("editing_q_id")
+        quiz_id = context.user_data.get("editing_quiz_id")
+        text = update.message.text.strip()
+        
+        if not q_id or not quiz_id:
+            await update.message.reply_text("❌ Error: Session expired.")
+            return ConversationHandler.END
+        
+        # Handle /remove or /skip commands
+        if text.lower() == "/remove":
+            new_explanation = ""
+        elif text.lower() == "/skip":
+            context.user_data.pop("editing_q_id", None)
+            context.user_data.pop("editing_quiz_id", None)
+            await update.message.reply_text("❌ Cancelled.")
+            return ConversationHandler.END
+        else:
+            new_explanation = text
+        
+        # Update database
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("UPDATE questions SET explanation = ? WHERE id = ?", (new_explanation, q_id))
+        conn.commit()
+        conn.close()
+        
+        context.user_data.pop("editing_q_id", None)
+        context.user_data.pop("editing_quiz_id", None)
+        
+        await update.message.reply_text("✅ Explanation updated successfully!")
+        return ConversationHandler.END
+    except Exception as e:
+        logging.error(f"Error in save_explanation: {e}")
+        await update.message.reply_text("❌ Error saving explanation.")
+        return ConversationHandler.END
+
+async def handle_delete_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Delete a question with confirmation"""
+    try:
+        query = update.callback_query
+        
+        # Parse: delq_quiz_id_question_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        question_id = int(parts[2])
+        
+        # Show confirmation
+        await query.edit_message_text(
+            text="⚠️ **Are you sure you want to delete this question?**\n\n"
+                 "This action cannot be undone!",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("✅ Yes, Delete", callback_data=f"confirmdel_{quiz_id}_{question_id}")],
+                [InlineKeyboardButton("❌ Cancel", callback_data=f"editq_{quiz_id}_{question_id}")]
+            ])
+        )
+        await query.answer()
+    except Exception as e:
+        logging.error(f"Error in handle_delete_question: {e}")
+        await query.answer("❌ Error", show_alert=True)
+
+async def confirm_delete_question(update: Update, context: ContextTypes.DEFAULT_TYPE):
+    """Confirm and execute question deletion"""
+    try:
+        query = update.callback_query
+        await query.answer()
+        
+        # Parse: confirmdel_quiz_id_question_id
+        parts = query.data.split("_")
+        quiz_id = int(parts[1])
+        question_id = int(parts[2])
+        
+        conn = sqlite3.connect(DB_FILE)
+        cursor = conn.cursor()
+        cursor.execute("DELETE FROM questions WHERE id = ?", (question_id,))
+        conn.commit()
+        conn.close()
+        
+        await query.edit_message_text(
+            text="✅ Question deleted successfully!",
+            reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("🔙 Back to Questions", callback_data=f"edquestion_{quiz_id}")]])
+        )
+    except Exception as e:
+        logging.error(f"Error in confirm_delete_question: {e}")
+        await query.answer("❌ Error deleting question", show_alert=True)
+
 async def edit_title_trigger(update: Update, context: ContextTypes.DEFAULT_TYPE) -> int:
     try:
         query = update.callback_query
@@ -1117,12 +1370,16 @@ def main():
             entry_points=[
                 CallbackQueryHandler(edit_title_trigger, pattern="^edtitle_"),
                 CallbackQueryHandler(edit_desc_trigger, pattern="^eddesc_"),
-                CallbackQueryHandler(edit_timer_trigger, pattern="^edtime_")
+                CallbackQueryHandler(edit_timer_trigger, pattern="^edtime_"),
+                CallbackQueryHandler(edit_pre_message_trigger, pattern="^editpre_"),
+                CallbackQueryHandler(edit_explanation_trigger, pattern="^editexpl_")
             ],
             states={
                 EDIT_TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_title)],
                 EDIT_DESC: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_desc)],
-                EDIT_TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_timer)]
+                EDIT_TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, save_edited_timer)],
+                EDIT_QUESTION_PRE_MESSAGE: [MessageHandler(filters.TEXT, save_pre_message)],
+                EDIT_QUESTION_EXPLANATION: [MessageHandler(filters.TEXT, save_explanation)]
             },
             fallbacks=[CommandHandler("cancel", cancel)]
         )
@@ -1147,6 +1404,9 @@ def main():
         app.add_handler(CallbackQueryHandler(edit_quiz_menu, pattern="^edit_"))
         app.add_handler(CallbackQueryHandler(back_to_summary, pattern="^backto_"))
         app.add_handler(CallbackQueryHandler(edit_question_trigger, pattern="^edquestion_"))
+        app.add_handler(CallbackQueryHandler(handle_question_detail, pattern="^editq_"))
+        app.add_handler(CallbackQueryHandler(handle_delete_question, pattern="^delq_"))
+        app.add_handler(CallbackQueryHandler(confirm_delete_question, pattern="^confirmdel_"))
         
         app.add_handler(PollAnswerHandler(track_poll_answers))
         
