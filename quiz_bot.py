@@ -130,7 +130,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🏁 *Click 'I am ready!' to start the quiz.*"
             )
             
-            keyboard = [[InlineKeyboardButton("I am ready! 🎯 (0)", callback_data=f"ready_{quiz_id}")]]
+            keyboard = [[InlineKeyboardButton("I am ready!  (0)", callback_data=f"ready_{quiz_id}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
             return
@@ -149,7 +149,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Pehle niche wala container bhejenge
         poll_button = KeyboardButton(
-            text="📊 Create a Question",
+            text="Create a Question",
             request_poll=KeyboardButtonPollType(type="quiz")
         )
         bottom_container = ReplyKeyboardMarkup(
@@ -199,9 +199,9 @@ async def receive_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         context.user_data["quiz_build"]["description"] = "" if text.lower() == "/skip" else text.strip()
         await update.message.reply_text(
             f"Good. Your quiz '{context.user_data['quiz_build']['title']}' now has 0 questions. If you made a mistake, send /undo.\n\n"
-            "💡 **Sawal jodne ke liye:**\nClick on 📎 (Attachment) -> Select **Poll**.\n"
+            "💡 **Sawal jodne:**\n\n"
             "Enable **Quiz Mode**, add 2-7 options, pick the correct one, and tap Create.\n\n"
-            "Send /done when finished adding questions.",
+            "Send Your question.",
             reply_markup=ReplyKeyboardRemove()
         )
         return QUESTIONS
@@ -234,7 +234,7 @@ async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
             "• 📎 Send media/details to add context\n"
             "• 📄 Send text message for pre-message\n"
             "• ➕ Send next poll directly (auto-skips pre-message)\n"
-            "• ✅ Type /done to finish quiz"
+            "• ✅ send description message"
         )
         return PRE_MESSAGE
     except Exception as e:
@@ -280,7 +280,7 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "• 📎 Send media/details to add context\n"
                 "• 📄 Send text message for pre-message\n"
                 "• ➕ Send next poll directly (auto-skips pre-message)\n"
-                "• ✅ Type /done to finish quiz"
+                "• ✅ send description message"
             )
             return PRE_MESSAGE
         
