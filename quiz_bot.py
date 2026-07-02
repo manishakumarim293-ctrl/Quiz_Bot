@@ -135,7 +135,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
             return
 
-        # Normal private chat initialization layout
+                # Normal private chat initialization layout
         welcome_text = (
             "👋 **Welcome to Premium Quiz Bot!**\n\n"
             "Niche diye gaye buttons se aap apna naya quiz bana sakte hain ya pehle banaye huye quizzes dekh sakte hain:\n\n"
@@ -146,6 +146,26 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
             [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
         ]
+        
+        # --- NAYA CONTAINER CODE (YAHAN JODA GAYA HAI) ---
+        poll_button = KeyboardButton(
+            text="📊 Create a Question",
+            request_poll=KeyboardButtonPollType(type="quiz")
+        )
+        bottom_container = ReplyKeyboardMarkup(
+            [[poll_button]], 
+            resize_keyboard=True,
+            one_time_keyboard=False
+        )
+        
+        # Pehle niche wala container bhejenge
+        await update.message.reply_text(
+            text="🔄 Bot container activated.", 
+            reply_markup=bottom_container
+        )
+        # --------------------------------------------------
+
+        # Fir aapka main inline keyboard wala message jayega
         await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
     except Exception as e:
         logging.error(f"Error in start: {e}")
