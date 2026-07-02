@@ -5,7 +5,8 @@ import logging
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
-from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove
+# --- BADLAAV YAHAN KIYA GAYA HAI: KeyboardButton, KeyboardButtonPollType, aur ReplyKeyboardMarkup joda gaya hai ---
+from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, KeyboardButtonPollType, ReplyKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
     filters, ContextTypes, ConversationHandler, CallbackQueryHandler, PollAnswerHandler
