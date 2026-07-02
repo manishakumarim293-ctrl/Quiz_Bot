@@ -5,7 +5,6 @@ import logging
 import asyncio
 from datetime import datetime
 from dotenv import load_dotenv
-# --- BADLAAV YAHAN KIYA GAYA HAI: KeyboardButton, KeyboardButtonPollType, aur ReplyKeyboardMarkup joda gaya hai ---
 from telegram import Update, InlineKeyboardButton, InlineKeyboardMarkup, ReplyKeyboardRemove, KeyboardButton, KeyboardButtonPollType, ReplyKeyboardMarkup
 from telegram.ext import (
     Application, CommandHandler, MessageHandler, 
@@ -136,7 +135,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
             return
 
-                # Normal private chat initialization layout
+        # Normal private chat initialization layout
         welcome_text = (
             "👋 **Welcome to Premium Quiz Bot!**\n\n"
             "Niche diye gaye buttons se aap apna naya quiz bana sakte hain ya pehle banaye huye quizzes dekh sakte hain:\n\n"
@@ -148,7 +147,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
         ]
         
-        # --- NAYA CONTAINER CODE (YAHAN JODA GAYA HAI) ---
+        # Pehle niche wala container bhejenge
         poll_button = KeyboardButton(
             text="📊 Create a Question",
             request_poll=KeyboardButtonPollType(type="quiz")
@@ -159,12 +158,10 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
             one_time_keyboard=False
         )
         
-        # Pehle niche wala container bhejenge
         await update.message.reply_text(
             text="🔄 Bot container activated.", 
             reply_markup=bottom_container
         )
-        # --------------------------------------------------
 
         # Fir aapka main inline keyboard wala message jayega
         await update.message.reply_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
@@ -1406,7 +1403,6 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
         # Purane message ko inline buttons ke sath edit karein
         await query.edit_message_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
         
-        # --- NAYA CONTAINER CODE (BACK MENU KE LIYE) ---
         poll_button = KeyboardButton(
             text="📊 Create a Question",
             request_poll=KeyboardButtonPollType(type="quiz")
@@ -1423,7 +1419,6 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             text="⚡ Bottom menu synchronized.",
             reply_markup=bottom_container
         )
-        # --------------------------------------------------
         
     except Exception as e:
         logging.error(f"Error in handle_back_main: {e}")
@@ -1447,7 +1442,7 @@ def main():
                 TITLE: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_title)],
                 DESCRIPTION: [MessageHandler(filters.TEXT & ~filters.COMMAND, receive_desc), CommandHandler("skip", receive_desc)],
                 QUESTIONS: [CommandHandler("undo", handle_undo), CommandHandler("done", finish_quiz_creation), MessageHandler(filters.POLL, receive_poll)],
-                PRE_MESSAGE: [MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION | filters.POLL, receive_pre_message), CommandHandler("skip", receive_pre_message), CommandHandler("done", finish_quiz_creation)],
+                PRE_MESSAGE: [MessageHandler(filters.TEXT | filters.PHOTO | filters.VIDEO | filters.Document.ALL | filters.ANIMATION | filters.POLL, receive_pre_message), CommandHandler("skip", receive_pre_message)],
                 TIMER: [MessageHandler(filters.TEXT & ~filters.COMMAND, handle_timer_text)]
             },
             fallbacks=[CommandHandler("cancel", cancel)],
