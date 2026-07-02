@@ -130,7 +130,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
                 "🏁 *Click 'I am ready!' to start the quiz.*"
             )
             
-            keyboard = [[InlineKeyboardButton("I am ready! 🎯 (0)", callback_data=f"ready_{quiz_id}")]]
+            keyboard = [[InlineKeyboardButton("I am ready!  (0)", callback_data=f"ready_{quiz_id}")]]
             reply_markup = InlineKeyboardMarkup(keyboard)
             await update.message.reply_text(init_text, reply_markup=reply_markup, parse_mode="Markdown")
             return
@@ -149,7 +149,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
         
         # Pehle niche wala container bhejenge
         poll_button = KeyboardButton(
-            text="📊 Create a Question",
+            text="Create a Question",
             request_poll=KeyboardButtonPollType(type="quiz")
         )
         bottom_container = ReplyKeyboardMarkup(
@@ -199,9 +199,9 @@ async def receive_desc(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         context.user_data["quiz_build"]["description"] = "" if text.lower() == "/skip" else text.strip()
         await update.message.reply_text(
             f"Good. Your quiz '{context.user_data['quiz_build']['title']}' now has 0 questions. If you made a mistake, send /undo.\n\n"
-            "💡 **Sawal jodne ke liye:**\nClick on 📎 (Attachment) -> Select **Poll**.\n"
-            "Enable **Quiz Mode**, add 2-7 options, pick the correct one, and tap Create.\n\n"
-            "Send /done when finished adding questions.",
+            "💡 send new question poll.\n"
+            "Enable quiz tap Create.\n\n"
+            "Send done when finished adding questions.",
             reply_markup=ReplyKeyboardRemove()
         )
         return QUESTIONS
@@ -229,12 +229,12 @@ async def receive_poll(update: Update, context: ContextTypes.DEFAULT_TYPE) -> in
         
         await update.message.reply_text(
             f"✅ Question added! Your quiz now has {len(context.user_data['quiz_build']['questions'])} question(s).\n\n"
-            "💬 **Optional:** Send a message/media (text, image, video, etc.) that will be shown BEFORE this question to provide context.\n\n"
-            "⚡ **Quick options:**\n"
+            "💬 Optional: Send a message/media (text, image, video, etc.) that will be shown before this question to provide context.\n\n"
+            "⚡ Quick options:\n"
             "• 📎 Send media/details to add context\n"
             "• 📄 Send text message for pre-message\n"
             "• ➕ Send next poll directly (auto-skips pre-message)\n"
-            "• ✅ Type /done to finish quiz"
+            "• ✅ pre-message bheje"
         )
         return PRE_MESSAGE
     except Exception as e:
@@ -280,7 +280,7 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
                 "• 📎 Send media/details to add context\n"
                 "• 📄 Send text message for pre-message\n"
                 "• ➕ Send next poll directly (auto-skips pre-message)\n"
-                "• ✅ Type /done to finish quiz"
+                "• ✅ pahle pre-message bheje"
             )
             return PRE_MESSAGE
         
@@ -300,7 +300,7 @@ async def receive_pre_message(update: Update, context: ContextTypes.DEFAULT_TYPE
         
         await update.message.reply_text(
             f"✅ Pre-message set! Your quiz now has {len(context.user_data['quiz_build']['questions'])} question(s).\n\n"
-            "💬 **Next step:**\n"
+            "💬 Next step:\n"
             "• Send next question poll\n"
             "• Or type /done to finish quiz"
         )
@@ -330,7 +330,7 @@ async def finish_quiz_creation(update: Update, context: ContextTypes.DEFAULT_TYP
             return QUESTIONS
         
         await update.message.reply_text(
-            "⏱️ **Please set a time limit for questions:**\n\n"
+            "⏱️ Please set a time limit for questions:\n\n"
             "Type any of these: 15, 30, 40, 60\n\n"
             "Example: Type '30' for 30 seconds per question",
             reply_markup=ReplyKeyboardRemove()
