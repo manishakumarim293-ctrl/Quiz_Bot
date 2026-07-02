@@ -1402,7 +1402,28 @@ async def handle_back_main(update: Update, context: ContextTypes.DEFAULT_TYPE):
             [InlineKeyboardButton("Create New Quiz 🚀", callback_data="btn_newquiz")],
             [InlineKeyboardButton("View My Quizzes 📚", callback_data="btn_viewquizzes")]
         ]
+        # Purane message ko inline buttons ke sath edit karein
         await query.edit_message_text(welcome_text, reply_markup=InlineKeyboardMarkup(keyboard), parse_mode="Markdown")
+        
+        # --- NAYA CONTAINER CODE (BACK MENU KE LIYE) ---
+        poll_button = KeyboardButton(
+            text="📊 Create a Question",
+            request_poll=KeyboardButtonPollType(type="quiz")
+        )
+        bottom_container = ReplyKeyboardMarkup(
+            [[poll_button]], 
+            resize_keyboard=True,
+            one_time_keyboard=False
+        )
+        
+        # Ek naya chota message bhej kar container ko screen par lane ke liye
+        await context.bot.send_message(
+            chat_id=update.effective_chat.id,
+            text="⚡ Bottom menu synchronized.",
+            reply_markup=bottom_container
+        )
+        # --------------------------------------------------
+        
     except Exception as e:
         logging.error(f"Error in handle_back_main: {e}")
         await query.answer("❌ Error", show_alert=True)
